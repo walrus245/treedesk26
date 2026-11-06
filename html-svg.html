@@ -1,0 +1,322 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Instant HTML to SVG Generator</title>
+
+    <style>
+        :root {
+            --bg: #0f172a;
+            --surface: #1e293b;
+            --primary: #fc2651;
+            --primary-hover: #ff4d75;
+            --text: #f1f5f9;
+            --text-muted: #94a3b8;
+            --border: #334155;
+            --radius: 12px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont,
+                'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 2rem 1rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .converter-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            padding: 2.5rem;
+            border-radius: var(--radius);
+            width: 100%;
+            max-width: 600px;
+            box-shadow: 0 10px 25px -5px rgba(0,0,0,.3);
+        }
+
+        h2 {
+            margin-top: 0;
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        p {
+            color: var(--text-muted);
+            font-size: .95rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .input-group {
+            margin-bottom: 1.25rem;
+        }
+
+        label {
+            display: block;
+            font-weight: 600;
+            font-size: .85rem;
+            margin-bottom: .5rem;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+        }
+
+        input {
+            width: 100%;
+            padding: .85rem 1rem;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            background: var(--bg);
+            color: var(--text);
+            font-size: 15px;
+            outline: none;
+        }
+
+        input:focus {
+            border-color: var(--primary);
+        }
+
+        .dimensions-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        button {
+            width: 100%;
+            background: var(--primary);
+            color: white;
+            border: 0;
+            padding: 1rem;
+            font-size: 15px;
+            font-weight: 600;
+            border-radius: var(--radius);
+            cursor: pointer;
+            transition: background .2s, transform .1s;
+        }
+
+        button:hover {
+            background: var(--primary-hover);
+        }
+
+        button:active {
+            transform: scale(.98);
+        }
+
+        .status-box {
+            margin-top: 1rem;
+            padding: .75rem 1rem;
+            border-radius: var(--radius);
+            font-size: 14px;
+            display: none;
+            font-weight: 500;
+            overflow-wrap: anywhere;
+        }
+
+        @media(max-width: 500px) {
+            .converter-card {
+                padding: 1.5rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="converter-card">
+
+    <h2>Instant HTML to SVG Generator</h2>
+
+    <p>
+        Paste a GitHub raw file or jsDelivr URL
+        to embed it inside a full-size SVG file.
+    </p>
+
+    <div class="input-group">
+        <label for="urlInput">Target Web URL</label>
+        <input
+            type="text"
+            id="urlInput"
+            placeholder="https://cdn.jsdelivr.net/..."
+        >
+    </div>
+
+    <div class="dimensions-grid">
+        <div>
+            <label for="widthInput">Canvas Width (px)</label>
+            <input
+                type="number"
+                id="widthInput"
+                value="1920"
+                min="1"
+            >
+        </div>
+
+        <div>
+            <label for="heightInput">Canvas Height (px)</label>
+            <input
+                type="number"
+                id="heightInput"
+                value="1080"
+                min="1"
+            >
+        </div>
+    </div>
+
+    <button onclick="processAndDownload()">
+        Generate & Download SVG
+    </button>
+
+    <div id="status" class="status-box"></div>
+
+</div>
+
+<script>
+function normalizeGitHubUrl(url) {
+    let target = url.trim();
+
+    if (
+        target.includes("github.com") &&
+        !target.includes("raw.githubusercontent.com")
+    ) {
+        target = target
+            .replace("github.com", "raw.githubusercontent.com")
+            .replace("/blob/", "/");
+    }
+
+    return target;
+}
+
+async function processAndDownload() {
+    const urlInput =
+        document.getElementById("urlInput").value.trim();
+
+    const width = Number(
+        document.getElementById("widthInput").value || 1920
+    );
+
+    const height = Number(
+        document.getElementById("heightInput").value || 1080
+    );
+
+    if (!urlInput) {
+        showStatus("Please provide a target URL.", "#ef4444");
+        return;
+    }
+
+    if (
+        !Number.isInteger(width) ||
+        !Number.isInteger(height) ||
+        width < 1 ||
+        height < 1 ||
+        width > 10000 ||
+        height > 10000
+    ) {
+        showStatus("Please enter valid dimensions.", "#ef4444");
+        return;
+    }
+
+    let fetchUrl;
+
+    try {
+        fetchUrl = normalizeGitHubUrl(urlInput);
+        const parsed = new URL(fetchUrl);
+
+        if (!["http:", "https:"].includes(parsed.protocol)) {
+            throw new Error("Only HTTP and HTTPS URLs are supported.");
+        }
+    } catch (err) {
+        showStatus("Invalid URL: " + err.message, "#ef4444");
+        return;
+    }
+
+    showStatus("Fetching HTML content...", "#94a3b8");
+
+    try {
+        const response = await fetch(fetchUrl);
+
+        if (!response.ok) {
+            throw new Error("HTTP error: " + response.status);
+        }
+
+        const htmlContent = await response.text();
+
+        const svgWrapper = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:xhtml="http://www.w3.org/1999/xhtml"
+     width="${width}"
+     height="${height}"
+     viewBox="0 0 ${width} ${height}">
+
+    <foreignObject x="0" y="0"
+                   width="${width}"
+                   height="${height}">
+
+        <div xmlns="http://www.w3.org/1999/xhtml"
+             style="width:${width}px;
+                    height:${height}px;
+                    margin:0;
+                    padding:0;
+                    overflow:hidden;">
+
+            ${htmlContent}
+
+        </div>
+
+    </foreignObject>
+</svg>`;
+
+        const blob = new Blob(
+            [svgWrapper],
+            { type: "image/svg+xml;charset=utf-8" }
+        );
+
+        const downloadUrl = URL.createObjectURL(blob);
+
+        const downloadLink = document.createElement("a");
+        downloadLink.href = downloadUrl;
+        downloadLink.download = "vector-render.svg";
+
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+
+        setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+
+        showStatus(
+            "SVG downloaded successfully! (" +
+            width + " × " + height + ")",
+            "#10b981"
+        );
+
+    } catch (err) {
+        showStatus(
+            "Processing failed: " + err.message,
+            "#ef4444"
+        );
+    }
+}
+
+function showStatus(message, color) {
+    const status = document.getElementById("status");
+
+    status.innerText = message;
+    status.style.color = color;
+    status.style.backgroundColor = "#0f172a";
+    status.style.border = "1px solid " + color;
+    status.style.display = "block";
+}
+</script>
+
+</body>
+</html>
